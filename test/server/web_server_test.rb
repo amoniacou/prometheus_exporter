@@ -32,9 +32,9 @@ class PrometheusExporterTest < Minitest::Test
     }
 
     # Create an htpasswd file for basic auth
-    htpasswd = WEBrick::HTTPAuth::Htpasswd.new(@auth_config[:file])
-    htpasswd.set_passwd(@auth_config[:realm], @auth_config[:user], @auth_config[:passwd])
-    htpasswd.flush
+    salt = rand.to_s[2..10]
+    encrypted_pass = @auth_config[:passwd].crypt(salt)
+    File.write(@auth_config[:file], "#{@auth_config[:user]}:#{encrypted_pass}\n")
   end
 
   def teardown
@@ -56,12 +56,24 @@ class PrometheusExporterTest < Minitest::Test
     port
   end
 
+  def wait_for_server(port)
+    TestHelper.wait_for(2) do
+      begin
+        TCPSocket.new("localhost", port).close
+        true
+      rescue Errno::ECONNREFUSED, Errno::ECONNRESET
+        false
+      end
+    end
+  end
+
   def test_it_can_collect_with_and_without_oj
     port = find_free_port
 
     server = PrometheusExporter::Server::WebServer.new port: port
     collector = server.collector
     server.start
+    wait_for_server(port)
 
     client1 = PrometheusExporter::Client.new port: port, thread_sleep: 0.001, json_serializer: :oj
     client2 = PrometheusExporter::Client.new port: port, thread_sleep: 0.001, json_serializer: :json
@@ -95,6 +107,16 @@ class PrometheusExporterTest < Minitest::Test
     collector = server.collector
     server.start
 
+    # Wait for IPv6
+    TestHelper.wait_for(2) do
+      begin
+        TCPSocket.new("::1", port).close
+        true
+      rescue Errno::ECONNREFUSED, Errno::ECONNRESET
+        false
+      end
+    end
+
     client = PrometheusExporter::Client.new host: "::1", port: port, thread_sleep: 0.001
     gauge = client.register(:gauge, "my_gauge", "some gauge")
     gauge.observe(99)
@@ -126,6 +148,7 @@ class PrometheusExporterTest < Minitest::Test
     server = PrometheusExporter::Server::WebServer.new port: port
     collector = server.collector
     server.start
+    wait_for_server(port)
 
     client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
 
@@ -168,6 +191,7 @@ class PrometheusExporterTest < Minitest::Test
 
     server = PrometheusExporter::Server::WebServer.new port: port, collector: collector
     server.start
+    wait_for_server(port)
 
     client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
     client.send_json "type" => "mem metric", "value" => 150
@@ -222,6 +246,7 @@ class PrometheusExporterTest < Minitest::Test
                                                 auth: @auth_config[:file],
                                                 realm: @auth_config[:realm]
     server.start
+    wait_for_server(port)
 
     client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
     client.send_json "type" => "mem metric", "value" => 150
@@ -266,6 +291,7 @@ class PrometheusExporterTest < Minitest::Test
                                                 auth: @auth_config[:file],
                                                 realm: @auth_config[:realm]
     server.start
+    wait_for_server(port)
 
     Net::HTTP
       .new("localhost", port)
@@ -296,6 +322,7 @@ class PrometheusExporterTest < Minitest::Test
 
     server = PrometheusExporter::Server::WebServer.new port: port, collector: collector
     server.start
+    wait_for_server(port)
 
     client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
 

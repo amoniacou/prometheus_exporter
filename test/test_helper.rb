@@ -7,6 +7,7 @@ SimpleCov.start { add_filter "test/" }
 
 require "minitest/mock"
 require "minitest/autorun"
+require "minitest/mock"
 require "ostruct"
 require "redis"
 

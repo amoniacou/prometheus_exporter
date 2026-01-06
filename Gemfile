@@ -13,6 +13,7 @@ gem "mini_racer"
 gem "minitest"
 gem "minitest-mock"
 gem "minitest-stub-const"
+gem "debug"
 gem "oj"
 gem "rack-test"
 gem "rake"
@@ -21,6 +22,7 @@ gem "syntax_tree"
 gem "syntax_tree-disable_ternary"
 gem "raindrops", "~> 0.19" if !RUBY_ENGINE == "jruby"
 gem "simplecov"
+gem "webrick"
 
 # Dev tools / linter
 gem "guard", require: false
