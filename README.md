@@ -983,7 +983,9 @@ histogram.buckets => [0.1, 0.2, 0.3]
 
 ## Transport concerns
 
-Prometheus Exporter handles transport using a simple HTTP protocol. In multi process mode we avoid needing a large number of HTTP request by using chunked encoding to send metrics. This means that a single HTTP channel can deliver 100s or even 1000s of metrics over a single HTTP session to the `/send-metrics` endpoint. All calls to `send` and `send_json` on the `PrometheusExporter::Client` class are **non-blocking** and batched.
+Prometheus Exporter handles transport using a simple HTTP protocol. In multi process mode we avoid needing a large number of HTTP requests by batching metrics: the `PrometheusExporter::Client` worker drains its queue on an interval and sends all pending metrics as a single newline-delimited (NDJSON) POST to the `/send-metrics` endpoint, reusing the TCP connection via HTTP keep-alive. A single connection can therefore deliver 100s or even 1000s of metrics. All calls to `send` and `send_json` on the `PrometheusExporter::Client` class are **non-blocking** and batched.
+
+Because each batch is a complete, self-contained request, the exporter runs on any Rack-compatible server (WEBrick, Puma, Falcon). The server is selected automatically via `Rackup::Handler.default` and can be forced with the `handler:` option on `PrometheusExporter::Server::WebServer`.
 
 The `/bench` directory has simple benchmark, which is able to send through 10k messages in 500ms.
 

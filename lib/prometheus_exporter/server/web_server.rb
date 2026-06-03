@@ -14,7 +14,6 @@ module PrometheusExporter::Server
     attr_reader :collector
 
     def initialize(opts)
-      $DEBUG = true
       @port = opts[:port] || PrometheusExporter::DEFAULT_PORT
       @bind = opts[:bind] || PrometheusExporter::DEFAULT_BIND_ADDRESS
       @verbose = opts[:verbose] || false
@@ -37,13 +36,15 @@ module PrometheusExporter::Server
 
       @collector = opts[:collector] || Collector.new(logger: @logger)
 
+      @handler = opts[:handler]
+
       @tls_cert_file = opts[:tls_cert_file]
       @tls_key_file = opts[:tls_key_file]
     end
 
     def start
       @runner ||= Thread.start do
-        handler = Rackup::Handler.default
+        handler = @handler ? Rackup::Handler.get(@handler) : Rackup::Handler.default
 
         unless handler
           raise "No Rackup handler found. Please install a server like 'puma' or 'falcon'."

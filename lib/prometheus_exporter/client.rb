@@ -146,20 +146,19 @@ module PrometheusExporter
     end
 
     def process_queue
-      while @queue.length > 0
-        ensure_socket!
+      return if @queue.empty?
 
-        begin
-          message = @queue.pop
-          @socket.write(message.bytesize.to_s(16).upcase)
-          @socket.write("\r\n")
-          @socket.write(message)
-          @socket.write("\r\n")
-        rescue => e
-          logger.warn "Prometheus Exporter is dropping a message: #{e}"
-          close_socket!
-          raise
-        end
+      ensure_socket!
+
+      messages = []
+      messages << @queue.pop until @queue.empty?
+
+      begin
+        send_request(messages.join("\n"))
+      rescue => e
+        logger.warn "Prometheus Exporter is dropping #{messages.length} message(s): #{e}"
+        close_socket!
+        raise
       end
     end
 
@@ -208,12 +207,7 @@ module PrometheusExporter
 
     def close_socket!
       begin
-        if @socket && !@socket.closed?
-          @socket.write("0\r\n")
-          @socket.write("\r\n")
-          @socket.flush
-          @socket.close
-        end
+        @socket&.close
       rescue Errno::EPIPE
       end
 
@@ -247,12 +241,6 @@ module PrometheusExporter
           @socket.connect
         end
 
-        @socket.write("POST /send-metrics HTTP/1.1\r\n")
-        @socket.write("Transfer-Encoding: chunked\r\n")
-        @socket.write("Host: #{@host}\r\n")
-        @socket.write("Connection: Close\r\n")
-        @socket.write("Content-Type: application/octet-stream\r\n")
-        @socket.write("\r\n")
         @socket_started = Time.now.to_f
         @socket_pid = Process.pid
       end
@@ -262,6 +250,45 @@ module PrometheusExporter
       close_socket!
       @socket_pid = nil
       raise
+    end
+
+    def send_request(body)
+      @socket.write("POST /send-metrics HTTP/1.1\r\n")
+      @socket.write("Host: #{@host}\r\n")
+      @socket.write("Connection: keep-alive\r\n")
+      @socket.write("Content-Type: application/octet-stream\r\n")
+      @socket.write("Content-Length: #{body.bytesize}\r\n")
+      @socket.write("\r\n")
+      @socket.write(body)
+      @socket.flush
+
+      read_response!
+    end
+
+    def read_response!
+      status_line = @socket.gets
+      raise "Prometheus Exporter received empty response" if status_line.nil?
+
+      content_length = 0
+      keep_alive = true
+      while (line = @socket.gets) && line != "\r\n"
+        case line
+        when /\AContent-Length:\s*(\d+)/i
+          content_length = $1.to_i
+        when /\AConnection:\s*close/i
+          keep_alive = false
+        end
+      end
+
+      @socket.read(content_length) if content_length > 0
+
+      close_socket! unless keep_alive
+
+      unless status_line =~ %r{\AHTTP/1\.[01] 2\d\d}
+        raise "Prometheus Exporter received unexpected response: #{status_line.strip}"
+      end
+
+      nil
     end
 
     def use_ssl?

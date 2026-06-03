@@ -21,6 +21,15 @@ class DemoCollector
 end
 
 class PrometheusExporterTest < Minitest::Test
+  TEST_HANDLER = ENV["PROMETHEUS_EXPORTER_TEST_HANDLER"].to_s.empty? ? nil : ENV["PROMETHEUS_EXPORTER_TEST_HANDLER"]
+  TEST_HOST = "127.0.0.1"
+
+  def web_server(**opts)
+    opts[:handler] = TEST_HANDLER if TEST_HANDLER
+    opts[:bind] ||= TEST_HOST
+    PrometheusExporter::Server::WebServer.new(opts)
+  end
+
   def setup
     PrometheusExporter::Metric::Base.default_prefix = ""
 
@@ -47,7 +56,7 @@ class PrometheusExporterTest < Minitest::Test
     port = 12_437
     while port < 13_000
       begin
-        TCPSocket.new("localhost", port).close
+        TCPSocket.new(TEST_HOST, port).close
         port += 1
       rescue Errno::ECONNREFUSED, Errno::ECONNRESET
         break
@@ -59,7 +68,7 @@ class PrometheusExporterTest < Minitest::Test
   def wait_for_server(port)
     TestHelper.wait_for(2) do
       begin
-        TCPSocket.new("localhost", port).close
+        TCPSocket.new(TEST_HOST, port).close
         true
       rescue Errno::ECONNREFUSED, Errno::ECONNRESET
         false
@@ -70,7 +79,7 @@ class PrometheusExporterTest < Minitest::Test
   def test_it_can_collect_with_and_without_oj
     port = find_free_port
 
-    server = PrometheusExporter::Server::WebServer.new port: port
+    server = web_server port: port
     collector = server.collector
     server.start
     wait_for_server(port)
@@ -103,7 +112,7 @@ class PrometheusExporterTest < Minitest::Test
     port = find_free_port
 
     # for some reason on WSL it is not binding to v6 for localhost.
-    server = PrometheusExporter::Server::WebServer.new port: port, bind: "::1"
+    server = web_server port: port, bind: "::1"
     collector = server.collector
     server.start
 
@@ -145,12 +154,12 @@ class PrometheusExporterTest < Minitest::Test
   def test_it_can_collect_metrics_from_standard
     port = find_free_port
 
-    server = PrometheusExporter::Server::WebServer.new port: port
+    server = web_server port: port
     collector = server.collector
     server.start
     wait_for_server(port)
 
-    client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
+    client = PrometheusExporter::Client.new host: TEST_HOST, port: port, thread_sleep: 0.001
 
     gauge = client.register(:gauge, "my_gauge", "some gauge")
     counter = client.register(:counter, "my_counter", "some counter")
@@ -189,11 +198,11 @@ class PrometheusExporterTest < Minitest::Test
     collector = DemoCollector.new
     port = find_free_port
 
-    server = PrometheusExporter::Server::WebServer.new port: port, collector: collector
+    server = web_server port: port, collector: collector
     server.start
     wait_for_server(port)
 
-    client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
+    client = PrometheusExporter::Client.new host: TEST_HOST, port: port, thread_sleep: 0.001
     client.send_json "type" => "mem metric", "value" => 150
     client.send_json "type" => "mem metric", "value" => 199
 
@@ -204,7 +213,7 @@ class PrometheusExporterTest < Minitest::Test
     body = nil
 
     Net::HTTP
-      .new("localhost", port)
+      .new(TEST_HOST, port)
       .start do |http|
         request = Net::HTTP::Get.new "/metrics"
 
@@ -241,14 +250,14 @@ class PrometheusExporterTest < Minitest::Test
     port = find_free_port
 
     server =
-      PrometheusExporter::Server::WebServer.new port: port,
+      web_server port: port,
                                                 collector: collector,
                                                 auth: @auth_config[:file],
                                                 realm: @auth_config[:realm]
     server.start
     wait_for_server(port)
 
-    client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
+    client = PrometheusExporter::Client.new host: TEST_HOST, port: port, thread_sleep: 0.001
     client.send_json "type" => "mem metric", "value" => 150
     client.send_json "type" => "mem metric", "value" => 199
 
@@ -257,7 +266,7 @@ class PrometheusExporterTest < Minitest::Test
     assert_match(/199/, collector.prometheus_metrics_text)
 
     Net::HTTP
-      .new("localhost", port)
+      .new(TEST_HOST, port)
       .start do |http|
         request = Net::HTTP::Get.new "/metrics"
         request.basic_auth @auth_config[:user], @auth_config[:passwd]
@@ -286,7 +295,7 @@ class PrometheusExporterTest < Minitest::Test
     port = find_free_port
 
     server =
-      PrometheusExporter::Server::WebServer.new port: port,
+      web_server port: port,
                                                 collector: collector,
                                                 auth: @auth_config[:file],
                                                 realm: @auth_config[:realm]
@@ -294,7 +303,7 @@ class PrometheusExporterTest < Minitest::Test
     wait_for_server(port)
 
     Net::HTTP
-      .new("localhost", port)
+      .new(TEST_HOST, port)
       .start do |http|
         request = Net::HTTP::Get.new "/metrics"
 
@@ -320,14 +329,14 @@ class PrometheusExporterTest < Minitest::Test
     collector = DemoCollector.new
     port = find_free_port
 
-    server = PrometheusExporter::Server::WebServer.new port: port, collector: collector
+    server = web_server port: port, collector: collector
     server.start
     wait_for_server(port)
 
-    client = PrometheusExporter::Client.new host: "localhost", port: port, thread_sleep: 0.001
+    client = PrometheusExporter::Client.new host: TEST_HOST, port: port, thread_sleep: 0.001
 
     Net::HTTP
-      .new("localhost", port)
+      .new(TEST_HOST, port)
       .start do |http|
         request = Net::HTTP::Get.new "/ping"
 

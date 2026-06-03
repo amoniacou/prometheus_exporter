@@ -42,9 +42,35 @@ jobs:
       - name: Run tests
         run: bin/rake
 
+  servers:
+    runs-on: ubuntu-latest
+    name: Server ${{ matrix.server }}
+    timeout-minutes: 10
+
+    env:
+      BUNDLE_GEMFILE: ${{ github.workspace }}/gemfiles/ar_81.gemfile
+      PROMETHEUS_EXPORTER_TEST_HANDLER: ${{ matrix.server }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [puma, webrick, falcon]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler: latest
+          bundler-cache: true
+
+      - name: Run tests
+        run: bin/rake
+
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build
+    needs: [build, servers]
     runs-on: ubuntu-latest
 
     outputs:

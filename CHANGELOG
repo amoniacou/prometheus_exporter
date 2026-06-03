@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+- CHANGE: the client → exporter metric transport now batches pending metrics into a single newline-delimited (NDJSON) POST per flush over an HTTP keep-alive connection, replacing the chunked-streaming protocol. The exporter now runs on any Rack server (Puma, Falcon, WEBrick), not just WEBrick.
+- BREAKING: `collector_sessions_total` now counts each `/send-metrics` POST (flush) instead of each long-lived connection.
+
 ## [2.3.1] - 2025-11-11
 
 - FIX: get controller full path instead of controller name - Alex Platteeuw

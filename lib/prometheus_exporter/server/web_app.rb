@@ -92,19 +92,20 @@ module PrometheusExporter::Server
 
     def handle_metrics(req, res)
       @sessions_total.observe
-      begin
-        req.body.each do |chunk|
+      req.body.read.to_s.each_line do |line|
+        line.strip!
+        next if line.empty?
+
+        begin
           @metrics_total.observe
-          @collector.process(chunk)
+          @collector.process(line)
+        rescue => e
+          @logger.error "\n\n#{e.inspect}\n#{e.backtrace}\n\n"
+          @bad_metrics_total.observe
         end
-        res.write("OK")
-        res.status = 200
-      rescue Exception => e
-        @logger.error "\n\n#{e.inspect}\n#{e.backtrace}\n\n"
-        @bad_metrics_total.observe
-        res.write("Bad Metrics #{e}")
-        res.status = e.respond_to?(:status_code) ? e.status_code : 500
       end
+      res.write("OK")
+      res.status = 200
     end
 
     def collected_metrics
